@@ -6,7 +6,9 @@ class State {
   currentState: number;
   effectDeps: any[][];
   currentEffect: number;
+  children: State[];
   root: EmptyFn;
+  parent: State | null;
 
   constructor(root: EmptyFn) {
     this.root = root;
@@ -14,11 +16,30 @@ class State {
     this.currentState = 0;
     this.effectDeps = [];
     this.currentEffect = 0;
+    this.children = [];
+    this.parent = null;
+  }
+
+  setParent(state: State | null) {
+    this.parent = state;
+  }
+
+  getParent() {
+    return this.parent;
+  }
+
+  addChild(state: State) {
+    this.children.push(state);
   }
 
   private resetIndices() {
     this.currentState = 0;
     this.currentEffect = 0;
+  }
+
+  private clearChildren() {
+    this.children = [];
+    this.children.forEach((child) => child.setParent(null));
   }
 
   getSetState<T>(val: T) {
@@ -38,6 +59,7 @@ class State {
     this.states[index] = value;
 
     this.resetIndices();
+    this.clearChildren();
     this.root();
   }
 
@@ -69,15 +91,20 @@ class State {
   }
 }
 
-let state: State | null = null;
+let rootState: State | null = null;
+let currentState: State | null = null;
 
-const getCurrentState = () => {
-  if (!state) throw new Error("Expected state root");
-  return state;
+const getRootStateOrNull = () => {
+  return rootState;
+};
+
+const getRootState = () => {
+  if (!rootState) throw new Error("Expected state root");
+  return rootState;
 };
 
 export function useState<T>(inputValue: T) {
-  const state = getCurrentState();
+  const state = getRootState();
   const [index, value] = state.getSetState(inputValue);
 
   const setFn = (newValue: T | SetFnParam<T>) => {
@@ -93,10 +120,10 @@ export function useEffect(
   effect: () => (() => void) | void,
   dependencies: any[],
 ) {
-  const state = getCurrentState();
+  if (!currentState) return;
 
-  if (state.effectExists()) {
-    const [index, oldDeps] = state.consumeEffectDeps()!;
+  if (currentState.effectExists()) {
+    const [index, oldDeps] = currentState.consumeEffectDeps()!;
     if (dependencies.length !== oldDeps.length) {
       throw new Error("Dependency array is different length");
     }
@@ -112,20 +139,34 @@ export function useEffect(
     }
 
     if (different) {
-      state.updateEffectDeps(index, dependencies);
+      currentState.updateEffectDeps(index, dependencies);
       effect();
     }
   } else {
-    state.createEffect(dependencies);
+    currentState.createEffect(dependencies);
     if (dependencies.length === 0) effect();
   }
 }
 
 export const createRoot = (fn: () => void) => {
-  state = new State(fn);
+  const newState = new State(fn);
+
+  if (!rootState) rootState = newState;
+
+  if (!currentState) {
+    currentState = newState;
+  } else {
+    newState.setParent(currentState);
+    currentState.addChild(newState);
+    currentState = newState;
+  }
+
   fn();
+
+  const parent = currentState.getParent();
+  if (parent) currentState = parent;
 };
 
-export const dumpState = () => {
-  console.log(state);
+export const printRoot = () => {
+  console.log(getRootStateOrNull());
 };
