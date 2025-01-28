@@ -1,14 +1,15 @@
 type EmptyFn = () => void;
 type SetFnParam<T> = (oldValue: T) => T;
+type EffectFn = () => (() => void) | void;
 
 class State {
-  states: any[];
-  currentState: number;
-  effectDeps: any[][];
-  currentEffect: number;
-  children: State[];
-  root: EmptyFn;
-  parent: State | null;
+  private states: any[];
+  private currentState: number;
+  private effectDeps: any[][];
+  private currentEffect: number;
+  private children: State[];
+  private root: EmptyFn;
+  private parent: State | null;
 
   constructor(root: EmptyFn) {
     this.root = root;
@@ -116,10 +117,7 @@ export function useState<T>(inputValue: T) {
   return [value as T, setFn] as const;
 }
 
-export function useEffect(
-  effect: () => (() => void) | void,
-  dependencies: any[],
-) {
+export function useEffect(effect: EffectFn, dependencies: any[]) {
   if (!currentState) return;
 
   if (currentState.effectExists()) {
